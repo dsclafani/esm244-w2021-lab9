@@ -1,0 +1,174 @@
+---
+title: "code_along_week_9"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      warning = FALSE,
+                      message = FALSE)
+library(tidyverse)
+library(here)
+library(boot)
+library(gt)
+library(patchwork)
+library(broom)
+library(nlstools)
+```
+
+## Lab 9: Bootstrapping, nonlinear least squares, and customizing tables with gt"
+
+### Part 1: Fun tables with 'gt'
+We'll use the `LifeCycleSavings` built-in dataset. See `?LifeCycleSavings` for more information on the included variables, and in the Console run `View(LifeCycleSavings)` to see the data. 
+
+Simplify the data a bit to get the 5 countries with the lowest savings ratio:
+```{r}
+#initial data wrangling
+disp_income <- LifeCycleSavings %>% 
+  rownames_to_column() %>% 
+  head(5) %>% 
+  mutate(ddpi = ddpi/100,
+         pop15 = pop15/100,
+         pop75 = pop75/100) # because it is already a percentage, we are making it into a decimal, and then in the table we will make it back to a percent
+```
+
+We'll make a custom table using the `gt` package with the following goals: 
+
+- Percent variables (ddpi, pop15 and pop75) should be in percent format
+- Per capita disposable income (dpi) should be as dollars
+- Color of dpi cells should change based on value
+
+Build this one level at a time to see changes (e.g., you should write the code and run before each additional pipe operator to see what the code does): 
+```{r}
+disp_income %>% 
+  gt %>% 
+  tab_header( # adds an overall
+    title = "Life Cycle savings",
+    subtitle = "5 Countries with lowest per capita disposable income"
+  ) %>% 
+  fmt_currency( # reformats to currency format
+    columns = vars(dpi), #pick which column should be showed as currency
+    decimals = 2
+  ) %>% 
+  fmt_percent(#puts thesee columns into percentage form
+    columns = vars(pop15, pop75, ddpi),
+    decimals = 1
+  ) %>% 
+  fmt_number(
+    columns = vars(sr),
+    decimals = 1
+  ) %>% 
+  tab_options(
+    table.width = pct(80)
+  ) %>% 
+  tab_footnote(
+    footnote = "Data averaged from 1970-1980",
+    locations = cells_title()
+  ) %>% 
+  data_color( #update cell colors
+    columns = vars(dpi), #... for mean_len column
+    colors = scales::col_numeric(
+      palette = c(
+        "orange", "red", "purple"
+      ),
+      domain = c(120,190)#scale end points
+    )
+  ) %>% 
+  cols_label(
+    sr = "Savings Ratio",
+    pop15 = "Pop < 15 yr",
+    pop75 = "Pop < 75 yr",
+    dpi = "Disposable $ per capita",
+    ddpi = "Disposable percent"
+  )
+
+```
+
+### Part 2: Bootstrapping
+Bootstrapping uses **sampling with replacement** to find a sampling distribution that is based on more than a single sample. Let's bootstrap a 95% confidence interval for the mean salinity of river discharge in Pamlico Sound, NC (see `?salinity` for information on the dataset, which exists in the `boot`) package. 
+
+From dataset documentation: "Biweekly averages of the water salinity and river discharge in Pamlico Sound, North Carolina were recorded between the years 1972 and 1977. The data in this set consists only of those measurements in March, April and May."
+
+Look at & explore the `salinity` data set. 
+```{r}
+#get some summary statistics
+hist(salinity$sal)
+mean(salinity$sal)
+t.test(salinity$sal) #gives us the 95% confidence interval
+```
+
+
+###  Bootstrap the Mean Salinity
+We will bootstrap the mean salinity by first creating a function to calculate the mean for each of our bootstrap samples
+```{r}
+#first, create a function that will calculate the mean of each bootstrapped sample
+mean_fun <- function(x,i){mean(x[i])}
+
+#second, get the vector of salinity
+sal_nc <- salinity$sal
+
+#third, create 100 bootstrap samples by resampling from the salinity vector (sal_nc), using the function you created (mean_fun) to calculate the mean of each:
+salboot_100 <- boot(sal_nc,
+                    statistic = mean_fun,
+                    R = 100)
+
+#fourth, for comparison lets make a bootstrap with 1000 samples
+salboot_10k <- boot(sal_nc,
+                    statistic = mean_fun,
+                    R = 1000)
+```
+
+Let's take a look at our bootstrap samples using `t0` (to see the original sample mean) and `t` (to see the means of each of the bootstrap samples).
+```{r}
+#use t0 element from the 'boot' output to see the original sample mean, and $t to see the means for each of the bootstrap samples:
+salboot_100$t0 #original sample mean
+salboot_100$t #all the means of each 100 bootstrapped samples
+
+#make vectors of boostrap sample means a data frame - so ggplot can use it
+salboot_100_df <- data.frame(bs_mean = salboot_100$t)
+salboot_10k_df <- data.frame(bs_mean = salboot_10k$t)
+
+# ggplot the bootstrap sample medians
+
+#the histogram of the original sample
+p1 <- ggplot(data = salinity, aes(x=sal))+
+  geom_histogram()
+
+#histogram of 100 bootstrap sample means
+p2 <- ggplot(data = salboot_100_df, aes(x = bs_mean))+
+  geom_histogram()
+
+#histogram of 1000 bootstrap sample means
+p3 <- ggplot(data = salboot_10k_df, aes(x = bs_mean))+
+  geom_histogram()
+
+
+(p1 +p2 +p3) & theme_minimal()
+```
+
+
+### OK back to bootstrapping...
+
+So now we have a sampling distribution based on means calculated from a large number of bootstrap samples, and we can use *this* bootstrapped sampling distribution (instead of one based on assumptions for our single sample) to find the confidence interval. 
+
+Use `boot.ci()` to find the confidence interval for the bootstrapped distribution (here, with the 10k bootstrapped means):
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
